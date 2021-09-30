@@ -1,3 +1,5 @@
+import random
+
 import numpy as np
 import pandas as pd
 import math
@@ -5,24 +7,24 @@ import math
 data = pd.read_csv(r'data/train.csv', encoding='gb18030')
 data = data.iloc[:, 3:]
 data[data == 'NR'] = 0
-data = data.drop([i for i in range(4320) if (i-1)%18==0])
-# data.to_csv(r'new.csv')
+data = data.drop([i for i in range(4320) if i%18 not in [0,5,7,8,9,11,14,15,16,17]])
+data.to_csv(r'new.csv')
 raw_data = data.to_numpy()
 # print(raw_data)
 
 # 每行为特征标签，每列存储当前小时的所有特征
 mouth_data = {}
-feature_nums = 17
+feature_nums = 10
+y_hat_loc = 4
 
 for mouth in range(12):
     sample = np.empty([feature_nums, 480])  # 一共有18个特征，每个月有20天一天24小时20*24=480
     # 每次循环拉伸存储24个小时的数据
     for day in range(20):
         # 需要拉伸的数据=（当前月*20+当前天）*18的数据间隔
-        sample[:, day * 24:(day + 1) * 24] = raw_data[feature_nums * (20 * mouth + day):feature_nums * (20 * mouth + day + 1):]
+        sample[:, day * 24:(day + 1) * 24] = raw_data[feature_nums * (20 * mouth + day):feature_nums * (20 * mouth + day + 1),:]
     mouth_data[mouth] = sample
-# print(mouth_data)
-
+# [pd.DataFrame(np.array(data)).to_csv(str(key)+'.csv') for key,data in mouth_data.items()]
 x = np.empty([12 * (20 * 24 - 9), feature_nums * 9], dtype=float)  # 因为每个月20天不连续，标签有12个月*（20天*24小时-9小时）
 y = np.empty([12 * (20 * 24 - 9), 1], dtype=float)
 
@@ -34,7 +36,7 @@ for mouth in range(12):
                 continue
             x[mouth * 471 + day * 12 + hour, :] = mouth_data[mouth][:, day * 24 + hour:day * 24 + hour + 9].reshape(1,
                                                                                                                     -1)
-            y[mouth * 471 + day * 12 + hour, 0] = mouth_data[mouth][9, day * 24 + hour + 9]
+            y[mouth * 471 + day * 12 + hour, 0] = 0 if mouth_data[mouth][y_hat_loc, day * 24 + hour + 9] < 0 else mouth_data[mouth][y_hat_loc, day * 24 + hour + 9]
 
 # 做标准化，统一量纲
 mean_x = np.mean(x, axis=0)
@@ -54,15 +56,19 @@ def split_train(x, y, test_ratio):
     train_indices = shuffled_indices[test_set_size:]
     return x[train_indices], x[test_indices], y[train_indices], y[test_indices]
 
+tempy = pd.DataFrame(y,dtype=float)
+tempy.to_csv('y.csv')
 
 train_x, vali_x, train_y, vali_y = split_train(x, y, 0.2)
-
+# train_x = x
+# train_y = y
 #添加一行对应bias项
 dim = train_x.shape[1] + 1
-w = np.zeros([dim, 1])
+w = np.ones([dim, 1])
+
 train_x = np.concatenate((np.ones([train_x.shape[0], 1]), train_x), axis=1).astype(float)
 
-lr = 10
+lr = 100
 adagrad = np.zeros([dim, 1])
 eps = 0.0005
 reg_rate = 0.011
@@ -77,13 +83,35 @@ reg_mat = np.concatenate((np.array([0]),np.ones([9*feature_nums])),axis=0)
 #     adagrad += adagrad ** 2
 #     w = w - lr * adagrad / (np.sqrt(adagrad) + eps)
 
-for T in range(500000):
-    loss = np.sum(np.power(train_x.dot(w) - train_y, 2)) / (len(train_x) * 2)
-    if T % 5000 == 0:
-        print("T=%d,loss:%f" % (T, loss))
-        lr /= 1.1
-    gradient = 2 * (train_x.T.dot(train_x.dot(w) - train_y))
-    # gradient = 2 * (train_x.T.dot(train_x.dot(w) - train_y)) / (loss * len(train_x))
-    adagrad += gradient ** 2
-    w -= lr * gradient / (np.sqrt(adagrad) + eps)
-np.save('weights.npy', w)
+# for T in range(500000):
+#     loss = np.sum(np.power(train_x.dot(w) - train_y, 2)) / (len(train_x) * 2)
+#     if T % 5000 == 0:
+#         print("T=%d,loss:%f,lr:%f" % (T, loss,lr))
+#         lr /= 1.05
+#     gradient = 2 * (train_x.T.dot(train_x.dot(w) - train_y))
+#     #gradient = 2 * (train_x.T.dot(train_x.dot(w) - train_y)) / (loss * len(train_x))
+#     adagrad += gradient ** 2
+#     w -= lr * gradient / (np.sqrt(adagrad) + eps)
+# np.save('weights.npy', w)
+
+
+test_x = vali_x
+real_y = vali_y
+test_x = np.concatenate((np.ones(shape = (test_x.shape[0],1)),test_x),axis = 1).astype(float)
+
+w = np.load('weights.npy')
+print(train_x.shape,test_x.shape, w.shape)
+ans_y = np.dot(test_x, w)
+
+print(real_y,test_x)
+
+import csv
+with open('test.csv', mode='w', newline='') as submit_file:
+    csv_writer = csv.writer(submit_file)
+    header = ['id', 'value', 'real']
+    print(header)
+    csv_writer.writerow(header)
+    for i in range(ans_y.shape[0]):
+        row = ['id_' + str(i), ans_y[i][0], real_y[i][0]]
+        csv_writer.writerow(row)
+        print(row)

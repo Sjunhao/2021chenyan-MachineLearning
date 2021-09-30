@@ -130,7 +130,7 @@ for month in range(12):
             y[month * 471 + day * 24 + hour, 0] = month_data[month][9, day * 24 + hour + 9] #value
 print(x)
 print(y)
-
+pd.DataFrame(y,dtype=float).to_csv('yyy.csv')
 
 # In[16]:
 
