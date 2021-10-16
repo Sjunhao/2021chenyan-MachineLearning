@@ -140,7 +140,7 @@ for alg, para in zip(algs, paras):
 def save(clf, i):
     pred = clf.predict(test)
     sub = pd.DataFrame({'PassengerId': Id, 'Survived': pred})
-    sub.to_csv("res_tan_{}.csv".format(i), index=False)
+    sub.to_csv(r"res/res_tan_{}.csv".format(i), index=False)
 
 
 i = 1
